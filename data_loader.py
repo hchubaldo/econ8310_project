@@ -28,13 +28,13 @@ class BaseballData(Dataset):
                └─ imageid2_frame0.jpg
 
     Args:
-        repo_url (str): GitHub repo base URL (e.g. 'https://github.com/user/repo/tree/main')
+        base_folder (str): Folder where annotation and framers images reside: C:/dir1/dir2
         image_size (tuple): Resize frames to this (default (28,28))
     """
 
-    def __init__(self, repo_url, image_size=(28, 28)):
+    def __init__(self, base_folder, image_size=(28, 28)):
         super().__init__()
-        self.repo_url = repo_url
+        self.base_folder = base_folder
         self.image_size = image_size
 
         print("Initializing dataset...")
@@ -47,26 +47,13 @@ class BaseballData(Dataset):
     #  Helper methods (previous standalone functions, now encapsulated)
     # -------------------------------------------------------------------------
 
-    def _parse_cvat_xml_and_frames(self, xml_url, frames_base_url):
+    def _parse_cvat_xml_and_frames(self, xml_file, frames_base_folder):
         """Parse one XML and associate frames with their corresponding images (load each frame only once)."""
         
         df = pd.DataFrame()
-
-
-        """
-        When you make a request (like response = requests.get(url)), the response object includes a status code — for example:
-        200 = OK
-        404 = Not Found
-        500 = Server Error
-        When you call response.raise_for_status():
-        If the status code indicates success (200–299), nothing happens — the program continues.
-        If the status code indicates an error (400 or higher), it raises an exception
-        """
-       
-        print(f"1111 Reading file - {xml_url}")
-        tree = xmlET.parse(xml_url)
+        tree = xmlET.parse(xml_file)
         root = tree.getroot()
-        base_name = os.path.splitext(os.path.basename(xml_url))[0]
+        base_name = os.path.splitext(os.path.basename(xml_file))[0]
   
         tracked_items ={}
         frame_list =[]
@@ -79,7 +66,10 @@ class BaseballData(Dataset):
               frame = int(box.get("frame"))
 
               moving_attr = box.find("attribute[@name='moving']")
-              moving = moving_attr.text.strip().lower() if moving_attr is not None else None
+              if moving_attr is not None and moving_attr.text:
+                moving = moving_attr.text.strip().lower()
+              else:
+                moving = "false"  
               trackid_info = {
                   "track_id": track_id,
                   "label": label,
@@ -100,9 +90,10 @@ class BaseballData(Dataset):
         for frame, objects in tracked_items.items():
           image_found = False
           for ext in [".jpg", ".jpeg", ".png"]:
-              image_url = f"{frames_base_url.rstrip('/')}/{quote(base_name)}/{quote(base_name)}_frame{frame}{ext}"
+              image_url = f"{frames_base_folder.rstrip('/')}/{quote(base_name)}/{quote(base_name)}_frame{frame}{ext}"
               if os.path.exists(image_url):
                   img = Image.open(image_url).convert("L")
+                  original_size = img.size  # (width, height)
                   img = img.resize(self.image_size)
                   flat_pixels = np.array(img).flatten().tolist()
                   image_found = True
@@ -110,7 +101,8 @@ class BaseballData(Dataset):
                       "image" : img,
                       #"image" : flat_pixels,
                       "image_url" : image_url,
-                      "tracked_objects" : objects
+                      "tracked_objects" : objects,
+                      "original_size": original_size  # store original frame size
                   }
                   frame_list.append(frame_info)
                   break
@@ -126,13 +118,11 @@ class BaseballData(Dataset):
         return df
 
 
-
-
     def _consolidate_from_github_repo(self):
 
         """Fetch all XML files from 'annotations' folder and process them."""
 
-        base_folder = self.repo_url
+        base_folder = self.base_folder
         if os.path.isdir(base_folder):
             print(f"Base Folder - {base_folder} exists!")
         else:
@@ -167,7 +157,22 @@ class BaseballData(Dataset):
         # create a new continuous index (0, 1, 2, …) for the combined DataFrame
         return pd.concat(all_dfs, ignore_index=True)
 
+    @staticmethod
+    def collate_fn(batch):
+        images = []
+        labels = []
+        coords = []
 
+        for img, lbl, cor in batch:
+            images.append(img)
+            labels.append(lbl)
+            coords.append(cor)
+
+        # stack only the image tensors (if all same size)
+        images = torch.stack(images, dim=0)
+
+        # keep labels and coords as lists (different lengths)
+        return images, labels, coords
 
 
     # -------------------------------------------------------------------------
@@ -188,14 +193,21 @@ class BaseballData(Dataset):
         # # Add channel dimension (C, H, W) for grayscale images
         image = torch.tensor(image_np, dtype=torch.float32).unsqueeze(0)
 
+        orig_w, orig_h = row['original_size']
+        new_w, new_h = self.image_size
+
         tracked_items = row["tracked_objects"]
         # coordinates as tensor list of [xtl, ytl, xbr, ybr]
         all_coordinates = []
         for item in tracked_items:
             coords_dict = item['coorindates']
             # Extract the values in a specific order: xtl, ytl, xbr, ybr
-            coords_list = [coords_dict['xtl'], coords_dict['ytl'], coords_dict['xbr'], coords_dict['ybr']]
-            all_coordinates.append(coords_list)
+            # Scale it propotionally to our image size
+            xtl = coords_dict['xtl'] * (new_w / orig_w)
+            ytl = coords_dict['ytl'] * (new_h / orig_h)
+            xbr = coords_dict['xbr'] * (new_w / orig_w)
+            ybr = coords_dict['ybr'] * (new_h / orig_h)
+            all_coordinates.append([xtl, ytl, xbr, ybr])
 
         #print(all_coordinates)
         coordinates_list_torch = torch.tensor(all_coordinates, dtype=torch.float32)
@@ -222,22 +234,52 @@ class BaseballData(Dataset):
                ├─ imageid1_frame1.jpg
                └─ imageid2_frame0.jp
 """
-repo_url = "C:/Users/Tech/OneDrive - University of Nebraska at Omaha/DataScience/BusinessForecasting-ECON8310/econ8310-assignment3"
-traindata = BaseballData(repo_url, image_size=(28, 28))
-loader = DataLoader(traindata, batch_size=1, shuffle=True)
+
+
+
+
+
+base_folder = "C:/Users/Tech/OneDrive - University of Nebraska at Omaha/DataScience/BusinessForecasting-ECON8310/econ8310-assignment3"
+base_folder = "C:/Users/Tech/OneDrive - University of Nebraska at Omaha/DataScience/BusinessForecasting-ECON8310/final-project"
+traindata = BaseballData(base_folder, image_size=(28, 28))
+loader = DataLoader(traindata, batch_size=8, shuffle=True,collate_fn=lambda x: traindata.collate_fn(x))
+
+# # Get one batch
+# images, labels, coords = next(iter(loader))
+# print("Batch shapes:", images.shape, labels,coords)
+
+# # Visualize first image in the batch
+# image_tensor = images[0]            
+# label_tensor = labels[0]
+
+# # Convert to numpy for plotting
+# image_np = image_tensor.squeeze().numpy()  # remove channel dimension
+
+# plt.imshow(image_np, cmap="gray")
+# plt.axis('off')
+# plt.show()
 
 
 # Get one batch
 images, labels, coords = next(iter(loader))
-print("Batch shapes:", images.shape, labels,coords)
+print("Batch shapes:", images.shape)
+print("Labels for first image:", labels[0])
+print("Coords for first image:", coords[0])
 
-# Visualize first image in the batch
+# Visualize first image
 image_tensor = images[0]            
-label_tensor = labels[0]
-
-# Convert to numpy for plotting
 image_np = image_tensor.squeeze().numpy()  # remove channel dimension
 
 plt.imshow(image_np, cmap="gray")
+
+# Optional: draw bounding boxes
+for box in coords[0]:
+    xtl, ytl, xbr, ybr = box
+    plt.gca().add_patch(
+        plt.Rectangle((xtl, ytl), xbr-xtl, ybr-ytl, 
+                      edgecolor='red', facecolor='none', linewidth=1)
+    )
+
+plt.title(f"Moving labels: {labels[0].tolist()}")
 plt.axis('off')
 plt.show()
