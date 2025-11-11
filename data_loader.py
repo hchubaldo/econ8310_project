@@ -244,22 +244,6 @@ base_folder = "C:/Users/Tech/OneDrive - University of Nebraska at Omaha/DataScie
 traindata = BaseballData(base_folder, image_size=(28, 28))
 loader = DataLoader(traindata, batch_size=8, shuffle=True,collate_fn=lambda x: traindata.collate_fn(x))
 
-# # Get one batch
-# images, labels, coords = next(iter(loader))
-# print("Batch shapes:", images.shape, labels,coords)
-
-# # Visualize first image in the batch
-# image_tensor = images[0]            
-# label_tensor = labels[0]
-
-# # Convert to numpy for plotting
-# image_np = image_tensor.squeeze().numpy()  # remove channel dimension
-
-# plt.imshow(image_np, cmap="gray")
-# plt.axis('off')
-# plt.show()
-
-
 # Get one batch
 images, labels, coords = next(iter(loader))
 print("Batch shapes:", images.shape)
@@ -272,7 +256,7 @@ image_np = image_tensor.squeeze().numpy()  # remove channel dimension
 
 plt.imshow(image_np, cmap="gray")
 
-# Optional: draw bounding boxes
+#draw bounding boxes
 for box in coords[0]:
     xtl, ytl, xbr, ybr = box
     plt.gca().add_patch(
