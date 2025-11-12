@@ -1,12 +1,27 @@
-# BaseballData PyTorch Dataset
+# BaseballData PyTorch DataLoader
 
-A custom **PyTorch Dataset** designed to handle **baseball video frame extraction and XML-based CVAT annotations**, allowing you to load, preprocess, and visualize baseball tracking data directly from a local or GitHub repository.
+A PyTorch DataLoader designed to handle baseball video frame extraction and XML-based CVAT annotations. Allows for the loading, preprocessing, and visualizing of baseball tracking data directly from a local or GitHub repository.
+
+---
+
+## Features
+
+This code:  
+- Automatically extracts video frames
+- Parses CVAT XML annotations for bounding boxes and movement labels
+- Converts all images to PyTorch tensors
+- Supports batch visualization with bounding boxes using Matplotlib
+- Scales bounding box coordinates to match resized images
+- Includes Error Handling for potential issues, such as:
+  - Throws an error if no data is found in the provided folder
+  - Exits with a `FileNotFoundError` if an image file is missing
+  - Raises a `ValueError` if an image is corrupted or empty  
 
 ---
 
 ## Expected Folder Structure
 
-The dataset expects your project folder to be structured as follows:
+The dataloader expects the project folder to be structured as follows:
 
 ```
 repo/
@@ -31,17 +46,6 @@ If `extract_videos=True`, the module automatically extracts frames from `.mov` v
 
 ---
 
-## Features
-
-✅ Automatically extracts video frames  
-✅ Parses **CVAT XML annotations** for bounding boxes and movement labels  
-✅ Converts all images to PyTorch tensors  
-✅ Handles **missing frames and invalid data gracefully**  
-✅ Supports **batch visualization** with bounding boxes using Matplotlib  
-✅ Scales bounding box coordinates to match resized images  
-
----
-
 ## Class Overview
 
 ```python
@@ -60,8 +64,6 @@ class BaseballData(Dataset):
 | `image_size` | `tuple` | `(28, 28)` | Target image resize size |
 
 ---
-
-
 
 ## Example Usage
 
@@ -95,7 +97,7 @@ traindata.visualize_batch(loader)
 
 ## Visualization
 
-The `visualize_batch()` function displays a batch of images along with their **bounding boxes** and **movement labels**:
+The `visualize_batch()` function displays a batch of images along with their bounding boxes and movement labels (0 = not moving, 1 = moving).
 
 
 ## Key Methods
@@ -110,10 +112,3 @@ The `visualize_batch()` function displays a batch of images along with their **b
 | `__getitem__()` | Returns image tensor, label tensor, and bounding box coordinates |
 
 ---
-
-## Error Handling
-
-The dataset includes several safety checks:
-- Throws an error if **no data is found** in the provided folder.  
-- Exits with a `FileNotFoundError` if an image file is missing.  
-- Raises a `ValueError` if an image is corrupted or empty.  
